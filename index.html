@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#071a33">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png" type="image/png">
 <title>МОРЯК — Админ-панель</title>
 <style>
 :root{--bg:#071a33;--panel:#102846;--gold:#e5bd65;--text:#f6f4ee;--muted:#b9c7d8;--red:#d85d65;--line:#29415d}
@@ -383,6 +385,13 @@ $("refreshBtn").addEventListener("click",async()=>{
   finally{setBusy(false);}
 });
 })();
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js")
+      .catch(error => console.error("PWA катасы:", error));
+  });
+}
 </script>
 </body>
 </html>
