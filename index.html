@@ -125,7 +125,20 @@ function escapeHtml(value){
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[c]));
 }
-function clearForm(){
+$("imageFile").addEventListener("change", () => {
+  const file = $("imageFile").files[0];
+  const preview = $("imagePreview");
+
+  if (!file) {
+    preview.src = "";
+    preview.classList.add("hidden");
+    return;
+  }
+
+  preview.src = URL.createObjectURL(file);
+  preview.classList.remove("hidden");
+});
+  function clearForm(){
   $("itemId").value = "";
   $("name").value = "";
   $("category").value = "";
