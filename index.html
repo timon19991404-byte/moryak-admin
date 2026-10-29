@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ky">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#071a33">
+<title>МОРЯК — Админ-панель</title>
+<style>
+:root{--bg:#071a33;--panel:#102846;--gold:#e5bd65;--text:#f6f4ee;--muted:#b9c7d8;--red:#d85d65;--line:#29415d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
+header{padding:20px 16px;background:#0b213d;border-bottom:1px solid var(--line)}
+h1{margin:0;color:var(--gold);font-size:25px}
+header p{margin:7px 0 0;color:var(--muted);font-size:13px}
+main{max-width:850px;margin:auto;padding:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:16px;margin-bottom:15px}
+h2{font-size:18px;margin:0 0 14px;color:var(--gold)}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+input,select,textarea{width:100%;padding:12px;border-radius:9px;border:1px solid #39536e;background:#081b32;color:white;font-size:16px}
+button{border:0;border-radius:9px;padding:12px 14px;font-weight:bold;font-size:14px;cursor:pointer}
+.primary{background:var(--gold);color:#10213a}
+.secondary{background:#29415d;color:white}
+.danger{background:#6b2734;color:white}
+button:disabled{opacity:.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.row button{flex:1}
+#status{font-size:14px;line-height:1.5;white-space:pre-wrap;color:var(--muted)}
+.item{padding:14px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border:0}
+.item-title{font-weight:bold;font-size:16px}
+.meta{color:var(--muted);font-size:13px;margin:6px 0}
+.price{color:var(--gold);font-size:18px;font-weight:bold}
+.pill{display:inline-block;padding:4px 8px;border-radius:20px;background:#263d56;font-size:12px;margin-top:7px}
+.hidden{display:none!important}
+.small{font-size:12px;color:var(--muted);line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+<h1>⚓ МОРЯК</h1>
+<p>АДМИН-ПАНЕЛЬ · МЕНЮ БАШКАРУУ</p>
+</header>
+
+<main>
+<div class="card">
+<h2>Туташуу жана кирүү</h2>
+<label>Supabase Project URL</label>
+<input id="projectUrl" value="https://vtrbbvmsgjoadopretly.supabase.co">
+<label>Publishable key</label>
+<input id="publishableKey" placeholder="sb_publishable_..." autocomplete="off">
+<div class="row">
+<button class="primary" id="connectBtn">Туташуу</button>
+</div>
+<div id="loginArea" class="hidden">
+<label>Электрондук почта</label>
+<input id="email" type="email" autocomplete="username" placeholder="Админдин email'и">
+<label>Сырсөз</label>
+<input id="password" type="password" autocomplete="current-password" placeholder="Supabase Auth сырсөзү">
+<div class="row">
+<button class="primary" id="loginBtn">Кирүү</button>
+<button class="secondary" id="logoutBtn">Чыгуу</button>
+</div>
+</div>
+<p id="status" role="status">Алгач Publishable key киргизип, «Туташуу» бас.</p>
+</div>
+
+<section id="adminArea" class="hidden">
+<div class="card">
+<h2 id="formTitle">＋ Жаңы тамак кошуу</h2>
+<input id="itemId" type="hidden">
+<label>Тамактын аталышы *</label>
+<input id="name" maxlength="120" placeholder="Мисалы: Форель мангалда">
+<label>Категория *</label>
+<input id="category" maxlength="80" placeholder="Мисалы: Форель">
+<label>Баасы (сом) *</label>
+<input id="price" type="number" min="0" step="0.01" placeholder="1200">
+<label>Курамы / сүрөттөмө</label>
+<textarea id="description" rows="2" maxlength="1000" placeholder="Милдеттүү эмес"></textarea>
+<label>Сүрөт URL (кийин кошсо болот)</label>
+<input id="imageUrl" type="url" placeholder="https://...">
+<label><input id="available" type="checkbox" checked style="width:auto"> Менюда көрсөтүү</label>
+<div class="row">
+<button class="primary" id="saveBtn">Сактоо</button>
+<button class="secondary" id="clearBtn">Тазалоо</button>
+</div>
+</div>
+
+<div class="card">
+<h2>Менюдагы тамактар</h2>
+<div class="row">
+<button class="secondary" id="refreshBtn">↻ Жаңыртуу</button>
+</div>
+<div id="menuList" style="margin-top:12px"></div>
+</div>
+</section>
+
+<p class="small">Коопсуздук: бул бетте Publishable key гана колдон. Secret же service_role ачкычын браузерге киргизбе. Меню өзгөртүүлөрү Supabase RLS эрежелери менен корголушу керек.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+"use strict";
+const $ = id => document.getElementById(id);
+let db = null;
+let currentUser = null;
+let busy = false;
+
+function status(message){ $("status").textContent = message; }
+function setBusy(value){
+  busy = value;
+  ["connectBtn","loginBtn","logoutBtn","saveBtn","clearBtn","refreshBtn"].forEach(id=>{
+    $(id).disabled = value;
+  });
+}
+function safeError(error){
+  return error && error.message ? error.message : String(error || "Белгисиз ката");
+}
+function escapeHtml(value){
+  return String(value ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+function clearForm(){
+  $("itemId").value = "";
+  $("name").value = "";
+  $("category").value = "";
+  $("price").value = "";
+  $("description").value = "";
+  $("imageUrl").value = "";
+  $("available").checked = true;
+  $("formTitle").textContent = "＋ Жаңы тамак кошуу";
+  $("saveBtn").textContent = "Сактоо";
+}
+function client(){
+  if(!db) throw new Error("Адегенде Supabase'ге туташ.");
+  return db;
+}
+async function checkAdmin(){
+  const {data,error} = await client().auth.getUser();
+  if(error) throw error;
+  if(!data.user) throw new Error("Сессия жок. Кайра кир.");
+  currentUser = data.user;
+  const {data:admin,error:adminError} = await client()
+    .from("moryak_admins")
+    .select("user_id")
+    .eq("user_id",currentUser.id)
+    .maybeSingle();
+  if(adminError) throw adminError;
+  if(!admin) throw new Error("Бул аккаунт moryak_admins таблицасында админ катары табылган жок.");
+  return true;
+}
+async function showSession(){
+  const {data,error} = await client().auth.getSession();
+  if(error) throw error;
+  if(data.session){
+    await checkAdmin();
+    $("loginArea").classList.remove("hidden");
+    $("adminArea").classList.remove("hidden");
+    status("Кирилди: " + currentUser.email + "\nАдмин укугу текшерилди.");
+    await loadMenu();
+  }else{
+    currentUser = null;
+    $("adminArea").classList.add("hidden");
+    $("loginArea").classList.remove("hidden");
+    status("Supabase туташты. Админ аккаунтуң менен кир.");
+  }
+}
+$("connectBtn").addEventListener("click",async()=>{
+  if(busy)return;
+  setBusy(true);
+  try{
+    if(!window.supabase) throw new Error("Supabase китепканасы жүктөлгөн жок. Интернетти текшер.");
+    const url=$("projectUrl").value.trim().replace(/\/+$/,"");
+    const key=$("publishableKey").value.trim();
+    if(!url.startsWith("https://") || !key) throw new Error("Project URL жана Publishable key керек.");
+    db=window.supabase.createClient(url,key);
+    await showSession();
+  }catch(e){status("Ката: "+safeError(e));}
+  finally{setBusy(false);}
+});
+$("loginBtn").addEventListener("click",async()=>{
+  if(busy)return;
+  setBusy(true);
+  try{
+    const {error}=await client().auth.signInWithPassword({
+      email:$("email").value.trim(),
+      password:$("password").value
+    });
+    if(error)throw error;
+    await showSession();
+  }catch(e){status("Кирүү катасы: "+safeError(e));}
+  finally{setBusy(false);}
+});
+$("logoutBtn").addEventListener("click",async()=>{
+  if(busy)return;
+  setBusy(true);
+  try{
+    const {error}=await client().auth.signOut();
+    if(error)throw error;
+    $("adminArea").classList.add("hidden");
+    status("Аккаунттан чыктың.");
+  }catch(e){status("Ката: "+safeError(e));}
+  finally{setBusy(false);}
+});
+async function loadMenu(){
+  const list=$("menuList");
+  list.textContent="Меню жүктөлүүдө...";
+  try{
+    await checkAdmin();
+    const {data,error}=await client().from("menu_items")
+      .select("id,name,category,price,description,image_url,is_available")
+      .order("id",{ascending:false});
+    if(error)throw error;
+    list.replaceChildren();
+    if(!data || data.length===0){
+      list.textContent="Менюда тамак жок. Жогорудагы формадан кош.";
+      return;
+    }
+    data.forEach(item=>{
+      const el=document.createElement("div");
+      el.className="item";
+      el.innerHTML=`
+        <div class="item-title">${escapeHtml(item.name)}</div>
+        <div class="meta">${escapeHtml(item.category)}</div>
+        <div class="price">${escapeHtml(item.price)} сом</div>
+        <div class="meta">${escapeHtml(item.description || "Сүрөттөмө жок")}</div>
+        <span class="pill">${item.is_available ? "Менюда бар" : "Жашырылган"}</span>
+        <div class="row">
+          <button class="primary" data-action="edit">Өзгөртүү</button>
+          <button class="secondary" data-action="toggle">${item.is_available ? "Жашыруу" : "Көрсөтүү"}</button>
+          <button class="danger" data-action="delete">Өчүрүү</button>
+        </div>`;
+      el.querySelector('[data-action="edit"]').addEventListener("click",()=>{
+        $("itemId").value=item.id;
+        $("name").value=item.name || "";
+        $("category").value=item.category || "";
+        $("price").value=item.price;
+        $("description").value=item.description || "";
+        $("imageUrl").value=item.image_url || "";
+        $("available").checked=!!item.is_available;
+        $("formTitle").textContent="✎ Тамакты өзгөртүү";
+        $("saveBtn").textContent="Өзгөртүүнү сактоо";
+        window.scrollTo({top:0,behavior:"smooth"});
+      });
+      el.querySelector('[data-action="toggle"]').addEventListener("click",async()=>{
+        if(!confirm(item.is_available ? "Бул тамакты менюдан жашыралыбы?" : "Бул тамакты менюда көрсөтөлүбү?"))return;
+        await changeItem(item.id,{is_available:!item.is_available},"Статус өзгөртүлдү.");
+      });
+      el.querySelector('[data-action="delete"]').addEventListener("click",async()=>{
+        if(!confirm(`«${item.name}» тамагын биротоло өчүрөлүбү?`))return;
+        await deleteItem(item.id);
+      });
+      list.appendChild(el);
+    });
+  }catch(e){list.textContent="Меню жүктөлгөн жок: "+safeError(e);}
+}
+async function changeItem(id,values,success){
+  if(busy)return;
+  setBusy(true);
+  try{
+    await checkAdmin();
+    const {error}=await client().from("menu_items").update(values).eq("id",id);
+    if(error)throw error;
+    status(success);
+    await loadMenu();
+  }catch(e){status("Ката: "+safeError(e));}
+  finally{setBusy(false);}
+}
+async function deleteItem(id){
+  if(busy)return;
+  setBusy(true);
+  try{
+    await checkAdmin();
+    const {error}=await client().from("menu_items").delete().eq("id",id);
+    if(error)throw error;
+    clearForm();
+    status("Тамак өчүрүлдү.");
+    await loadMenu();
+  }catch(e){status("Өчүрүү катасы: "+safeError(e));}
+  finally{setBusy(false);}
+}
+$("saveBtn").addEventListener("click",async()=>{
+  if(busy)return;
+  const name=$("name").value.trim();
+  const category=$("category").value.trim();
+  const priceText=$("price").value.trim();
+  const price=Number(priceText);
+  if(!name||!category||!priceText||!Number.isFinite(price)||price<0){
+    status("Аталышын, категориясын жана туура баасын толтур.");
+    return;
+  }
+  const imageUrl=$("imageUrl").value.trim();
+  if(imageUrl){
+    try{
+      const u=new URL(imageUrl);
+      if(u.protocol!=="https:")throw new Error();
+    }catch(e){status("Сүрөт шилтемеси HTTPS URL болушу керек.");return;}
+  }
+  const values={
+    name,category,price,
+    description:$("description").value.trim()||null,
+    image_url:imageUrl||null,
+    is_available:$("available").checked
+  };
+  setBusy(true);
+  try{
+    await checkAdmin();
+    const id=$("itemId").value;
+    let result;
+    if(id){
+      result=await client().from("menu_items").update(values).eq("id",id);
+    }else{
+      result=await client().from("menu_items").insert(values);
+    }
+    if(result.error)throw result.error;
+    clearForm();
+    status(id?"Тамактын өзгөртүүлөрү сакталды.":"Жаңы тамак кошулду.");
+    await loadMenu();
+  }catch(e){status("Сактоо катасы: "+safeError(e));}
+  finally{setBusy(false);}
+});
+$("clearBtn").addEventListener("click",clearForm);
+$("refreshBtn").addEventListener("click",async()=>{
+  if(busy)return;
+  setBusy(true);
+  try{await loadMenu();}
+  finally{setBusy(false);}
+});
+})();
+</script>
+</body>
+</html>
