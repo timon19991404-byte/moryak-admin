@@ -77,7 +77,11 @@ button:disabled{opacity:.5}
 <label>Курамы / сүрөттөмө</label>
 <textarea id="description" rows="2" maxlength="1000" placeholder="Милдеттүү эмес"></textarea>
 <label>Сүрөт URL (кийин кошсо болот)</label>
-<input id="imageUrl" type="url" placeholder="https://...">
+<input id="imageUrl" type="url" placeholder="https://..."> 
+<label>Телефондон сүрөт тандоо</label>
+<input id="imageFile" type="file" accept="image/jpeg,image/png,image/webp">
+<img id="imagePreview" class="hidden" alt="Тандалган сүрөт" style="width:100%;max-height:220px;object-fit:contain;margin-top:10px;border-radius:10px">
+
 <label><input id="available" type="checkbox" checked style="width:auto"> Менюда көрсөтүү</label>
 <div class="row">
 <button class="primary" id="saveBtn">Сактоо</button>
@@ -297,10 +301,47 @@ $("saveBtn").addEventListener("click",async()=>{
       if(u.protocol!=="https:")throw new Error();
     }catch(e){status("Сүрөт шилтемеси HTTPS URL болушу керек.");return;}
   }
-  const values={
+ 
+  const file = $("imageFile").files[0];
+  let uploadedImageUrl = $("imageUrl").value.trim();
+
+  if (file) {
+    if (!["image/jpeg","image/png","image/webp"].includes(file.type)) {
+      status("JPG, PNG же WEBP сүрөтүн танда.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      status("Сүрөт 5 MB'дан кичине болушу керек.");
+      return;
+    }
+
+    const ext = file.type === "image/png" ? "png"
+      : file.type === "image/webp" ? "webp" : "jpg";
+    const path = "menu/" + Date.now() + "-" +
+      Math.random().toString(36).slice(2) + "." + ext;
+
+    const { data: uploaded, error: uploadError } =
+      await client().storage.from("moryak-images")
+        .upload(path, file, {
+          contentType: file.type,
+          upsert: false
+        });
+
+    if (uploadError) {
+      status("Сүрөт жүктөлгөн жок: " + safeError(uploadError));
+      return;
+    }
+
+    const { data: publicData } =
+      client().storage.from("moryak-images")
+        .getPublicUrl(uploaded.path);
+
+    uploadedImageUrl = publicData.publicUrl;
+  }
+ const values={
     name,category,price,
     description:$("description").value.trim()||null,
-    image_url:imageUrl||null,
+    image_url:uploadedImageUrl||null,
     is_available:$("available").checked
   };
   setBusy(true);
